@@ -1,0 +1,115 @@
+{
+  "name": "02 - Запись на услугу: форма -> календарь -> подтверждение",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Демо 2: запись клиента\nФорма -> слот в Google Calendar -> подтверждение менеджеру в Telegram.\nНапоминание клиенту накануне - отдельный воркфлоу 02b (Schedule Trigger).\nНастройте: креденшелы Google Calendar и Telegram, ID календаря, chat_id менеджера.",
+        "height": 120,
+        "width": 380
+      },
+      "id": "h1-note-0000-4000-8000-000000000201",
+      "name": "Примечание",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-400, -140]
+    },
+    {
+      "parameters": {
+        "formTitle": "Запись на услугу",
+        "formDescription": "Выберите удобное время - подтвердим в течение часа",
+        "formFields": {
+          "values": [
+            {"fieldLabel": "Имя", "requiredField": true},
+            {"fieldLabel": "Телефон или Telegram", "requiredField": true},
+            {"fieldLabel": "Услуга", "fieldType": "dropdown", "fieldOptions": {"values": [{"option": "Консультация 30 мин"}, {"option": "Консультация 60 мин"}, {"option": "Диагностика"}]}, "requiredField": true},
+            {"fieldLabel": "Желаемая дата и время", "fieldType": "datetime", "requiredField": true}
+          ]
+        }
+      },
+      "id": "h2-form-0000-4000-8000-000000000202",
+      "name": "Форма записи",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [-120, 0],
+      "webhookId": "demo2-form-trigger"
+    },
+    {
+      "parameters": {
+        "calendar": {"__rl": true, "value": "ВСТАВЬТЕ_ID_КАЛЕНДАРЯ", "mode": "id"},
+        "start": "={{ $json['Желаемая дата и время'] }}",
+        "end": "={{ new Date(new Date($json['Желаемая дата и время']).getTime() + 60*60*1000).toISOString() }}",
+        "additionalFields": {
+          "summary": "={{ $json['Услуга'] }}: {{ $json['Имя'] }}",
+          "description": "=Клиент: {{ $json['Имя'] }}, контакт: {{ $json['Телефон или Telegram'] }}"
+        }
+      },
+      "id": "h3-cal-0000-4000-8000-000000000203",
+      "name": "Слот в календаре",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [140, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "version": 2},
+          "conditions": [
+            {
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {"type": "string", "operation": "notEmpty"}
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "h4-if-0000-4000-8000-000000000204",
+      "name": "Слот не создался?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [400, 0]
+    },
+    {
+      "parameters": {
+        "chatId": "=ВСТАВЬТЕ_CHAT_ID_МЕНЕДЖЕРА",
+        "text": "=❌ Запись не создана: {{ $('Форма записи').item.json['Имя'] }} на {{ $('Форма записи').item.json['Желаемая дата и время'] }}. Причина: {{ $json.error }}",
+        "additionalFields": {}
+      },
+      "id": "h5-tg-err-0000-4000-8000-000000000205",
+      "name": "Алерт менеджеру",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [640, 120],
+      "webhookId": "demo2-tg-error",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "chatId": "=ВСТАВЬТЕ_CHAT_ID_МЕНЕДЖЕРА",
+        "text": "=🟢 Новая запись: {{ $('Форма записи').item.json['Услуга'] }}, {{ $('Форма записи').item.json['Имя'] }}, {{ $('Форма записи').item.json['Желаемая дата и время'] }}",
+        "additionalFields": {}
+      },
+      "id": "h6-tg-ok-0000-4000-8000-000000000206",
+      "name": "Подтверждение менеджеру",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [640, -120],
+      "webhookId": "demo2-tg-notify",
+      "credentials": {}
+    }
+  ],
+  "connections": {
+    "Форма записи": {"main": [[{"node": "Слот в календаре", "type": "main", "index": 0}]]},
+    "Слот в календаре": {"main": [[{"node": "Слот не создался?", "type": "main", "index": 0}]]},
+    "Слот не создался?": {
+      "main": [
+        [{"node": "Алерт менеджеру", "type": "main", "index": 0}],
+        [{"node": "Подтверждение менеджеру", "type": "main", "index": 0}]
+      ]
+    }
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false
+}

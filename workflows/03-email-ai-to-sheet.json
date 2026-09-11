@@ -1,0 +1,112 @@
+{
+  "name": "03 - Письмо клиента: email -> AI-разбор -> таблица",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Демо 3: письма под контролем\nКаждое входящее письмо разбирает AI: категория, суть, срочность, контакты -> строка в таблице -> уведомление менеджеру.\nНастройте: IMAP, OpenAI (или другой LLM), Google Sheets, Telegram.",
+        "height": 120,
+        "width": 380
+      },
+      "id": "j1-note-0000-4000-8000-000000000301",
+      "name": "Примечание",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-400, -140]
+    },
+    {
+      "parameters": {
+        "format": "simple",
+        "options": {}
+      },
+      "id": "j2-imap-0000-4000-8000-000000000302",
+      "name": "Новое письмо",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [-120, 0]
+    },
+    {
+      "parameters": {
+        "modelId": {"__rl": true, "value": "gpt-4o-mini", "mode": "list"},
+        "messages": {
+          "values": [
+            {
+              "content": "Ты помощник отдела продаж. Разбери письмо клиента и верни ТОЛЬКО валидный JSON без пояснений: {\"категория\": \"вопрос|заказ|жалоба|спам|другое\", \"срочность\": \"высокая|средняя|низкая\", \"суть\": \"кратко одним предложением\", \"требует_ответа\": true|false}",
+              "role": "system"
+            },
+            {
+              "content": "=От: {{ $json.from }}\nТема: {{ $json.subject }}\n\n{{ $json.textPlain || $json.textHtml || '' }}",
+              "role": "user"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {"temperature": 0.1}
+      },
+      "id": "j3-ai-0000-4000-8000-000000000303",
+      "name": "AI-разбор письма",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [140, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {"id": "v1", "name": "Дата", "value": "={{ $('Новое письмо').item.json.date }}", "type": "string"},
+            {"id": "v2", "name": "От кого", "value": "={{ $('Новое письмо').item.json.from }}", "type": "string"},
+            {"id": "v3", "name": "Тема", "value": "={{ $('Новое письмо').item.json.subject }}", "type": "string"},
+            {"id": "v4", "name": "Категория", "value": "={{ $json.message ? 'ошибка разбора' : JSON.parse($json.content).категория }}", "type": "string"},
+            {"id": "v5", "name": "Срочность", "value": "={{ $json.message ? '' : JSON.parse($json.content).срочность }}", "type": "string"},
+            {"id": "v6", "name": "Суть", "value": "={{ $json.message ? '' : JSON.parse($json.content).суть }}", "type": "string"},
+            {"id": "v7", "name": "Требует ответа", "value": "={{ $json.message ? '' : JSON.parse($json.content).требует_ответа }}", "type": "string"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "j4-set-0000-4000-8000-000000000304",
+      "name": "Структура заявки",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [400, 0]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {"__rl": true, "value": "ВСТАВЬТЕ_ID_ТАБЛИЦЫ", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "Письма", "mode": "name"},
+        "columns": {"mappingMode": "autoMapInputData", "matchingColumns": [], "schema": []},
+        "options": {}
+      },
+      "id": "j5-sheet-0000-4000-8000-000000000305",
+      "name": "Строка в таблице",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [640, 0],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "=ВСТАВЬТЕ_CHAT_ID_МЕНЕДЖЕРА",
+        "text": "=📧 {{ $json['Категория'] }} ({{ $json['Срочность'] }}): {{ $json['Тема'] }} — {{ $json['Суть'] }}. От {{ $json['От кого'] }}",
+        "additionalFields": {}
+      },
+      "id": "j6-tg-0000-4000-8000-000000000306",
+      "name": "Уведомление менеджеру",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [880, 0],
+      "webhookId": "demo3-tg-notify",
+      "credentials": {}
+    }
+  ],
+  "connections": {
+    "Новое письмо": {"main": [[{"node": "AI-разбор письма", "type": "main", "index": 0}]]},
+    "AI-разбор письма": {"main": [[{"node": "Структура заявки", "type": "main", "index": 0}]]},
+    "Структура заявки": {"main": [[{"node": "Строка в таблице", "type": "main", "index": 0}]]},
+    "Строка в таблице": {"main": [[{"node": "Уведомление менеджеру", "type": "main", "index": 0}]]},
+    "Уведомление менеджеру": {"main": []}
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false
+}

@@ -1,0 +1,44 @@
+{
+  "name": "01b - Алерт об ошибке воркфлоу",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Обработка ошибок\nОтдельный воркфлоу на Error Trigger: ловит падение ЛЮБОГО рабочего воркфлоу и присылает алерт в Telegram.\nПривязывается в настройках воркфлоу (Settings -> Error Workflow).",
+        "height": 120,
+        "width": 360
+      },
+      "id": "aa-note-0000-4000-8000-0000000000b1",
+      "name": "Примечание",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-400, -100]
+    },
+    {
+      "parameters": {},
+      "id": "bb-errtrg-0000-4000-8000-0000000000b2",
+      "name": "При ошибке любого воркфлоу",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [-120, 0]
+    },
+    {
+      "parameters": {
+        "chatId": "=ВСТАВЬТЕ_CHAT_ID_АДМИНА",
+        "text": "=🚨 Упал воркфлоу: {{ $json.workflow.name }}.\nНода: {{ $json.execution.lastNodeExecuted }}.\nОшибка: {{ $json.execution.error.message }}.",
+        "additionalFields": {}
+      },
+      "id": "cc-tg-0000-4000-8000-0000000000b3",
+      "name": "Алерт админу",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [140, 0],
+      "webhookId": "demo1b-tg-alert",
+      "credentials": {}
+    }
+  ],
+  "connections": {
+    "При ошибке любого воркфлоу": {"main": [[{"node": "Алерт админу", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "active": false
+}

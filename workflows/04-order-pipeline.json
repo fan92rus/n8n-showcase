@@ -1,0 +1,120 @@
+{
+  "name": "04 — Заказный пайплайн: webhook → валидация → VIP-маршрутизация → CRM → уведомления",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "new-order",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a4000101-0000-4000-8000-000000000001",
+      "name": "Webhook: новый заказ",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "new-order"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Валидация входящего заказа: бросаем Error при мусоре — n8n отправит в error-ветку\nconst body = $input.first().json.body ?? $input.first().json;\nconst emailRe = /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/;\nconst errors = [];\nif (!body.order_id) errors.push('нет order_id');\nif (!emailRe.test(body.email || '')) errors.push('битый email');\nconst amount = Number(body.amount);\nif (!Number.isFinite(amount) || amount <= 0) errors.push('сумма не положительное число');\nif (errors.length) {\n  throw new Error('Заказ не прошёл валидацию: ' + errors.join('; '));\n}\nreturn [{ json: {\n  order_id: String(body.order_id),\n  email: body.email,\n  customer: body.customer || '(без имени)',\n  amount,\n  amount_fmt: amount.toLocaleString('ru-RU') + ' ₽',\n  is_vip: amount >= 50000,\n  received_at: new Date().toISOString()\n}}];"
+      },
+      "id": "a4000101-0000-4000-8000-000000000002",
+      "name": "Валидация",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2 },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_vip }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a4000101-0000-4000-8000-000000000003",
+      "name": "VIP? (>= 50к)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TG_ADMIN_CHAT_ID }}",
+        "text": "=🔥 VIP-заказ {{ $json.order_id }} на {{ $json.amount_fmt }} от {{ $json.customer }}",
+        "additionalFields": { "appendAttribution": false }
+      },
+      "id": "a4000101-0000-4000-8000-000000000004",
+      "name": "TG: VIP-алерт админу",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [660, -120]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": { "__rl": true, "value": "={{ $env.SHEET_ORDERS_ID }}", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Orders", "mode": "name" },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": ["order_id"]
+        },
+        "options": {}
+      },
+      "id": "a4000101-0000-4000-8000-000000000005",
+      "name": "CRM: Sheets appendOrUpdate (dedup по order_id)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TG_MANAGER_CHAT_ID }}",
+        "text": "=📦 Новый заказ {{ $json.order_id }} — {{ $json.amount_fmt }} ({{ $json.customer }}, {{ $json.email }})",
+        "additionalFields": { "appendAttribution": false }
+      },
+      "id": "a4000101-0000-4000-8000-000000000006",
+      "name": "TG: менеджеру",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1100, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\": true, \"order_id\": \"{{ $json.order_id }}\", \"message\": \"заказ принят\"}",
+        "options": {}
+      },
+      "id": "a4000101-0000-4000-8000-000000000007",
+      "name": "Respond: ok",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1320, 0]
+    }
+  ],
+  "connections": {
+    "Webhook: новый заказ": { "main": [[{ "node": "Валидация", "type": "main", "index": 0 }]] },
+    "Валидация": { "main": [[{ "node": "VIP? (>= 50к)", "type": "main", "index": 0 }]] },
+    "VIP? (>= 50к)": {
+      "main": [
+        [{ "node": "TG: VIP-алерт админу", "type": "main", "index": 0 }],
+        [{ "node": "CRM: Sheets appendOrUpdate (dedup по order_id)", "type": "main", "index": 0 }]
+      ]
+    },
+    "TG: VIP-алерт админу": { "main": [[{ "node": "CRM: Sheets appendOrUpdate (dedup по order_id)", "type": "main", "index": 0 }]] },
+    "CRM: Sheets appendOrUpdate (dedup по order_id)": { "main": [[{ "node": "TG: менеджеру", "type": "main", "index": 0 }]] },
+    "TG: менеджеру": { "main": [[{ "node": "Respond: ok", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "01b-error-alert" },
+  "pinData": {},
+  "meta": { "instanceId": "showcase" },
+  "tags": []
+}
