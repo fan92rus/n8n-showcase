@@ -13,18 +13,24 @@
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "webhookId": "demo-classify"
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.first().json.body || {};\nconst text = String(body.text || '').slice(0, 2000);\nif (!text.trim()) { throw new Error('text is required'); }\nreturn [{ json: { text } }];"
+        "jsCode": "const body = $input.first().json.body || {};\nconst text = String(body.text || '').slice(0, 2000);\nif (!text.trim()) { throw new Error('text is required'); }\nreturn [{ json: { text, user: String(body.user || 'аноним') } }];"
       },
       "id": "code-1",
       "name": "Валидация",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [220, 0]
+      "position": [
+        220,
+        0
+      ]
     },
     {
       "parameters": {
@@ -35,7 +41,10 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "x-opencode-session", "value": "n8n-demo-stand" }
+            {
+              "name": "x-opencode-session",
+              "value": "n8n-demo-stand"
+            }
           ]
         },
         "sendBody": true,
@@ -47,8 +56,16 @@
       "name": "LLM",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [440, 0],
-      "credentials": { "httpHeaderAuth": { "id": "deepseek-api", "name": "deepseek-api" } }
+      "position": [
+        440,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "deepseek-api",
+          "name": "deepseek-api"
+        }
+      }
     },
     {
       "parameters": {
@@ -58,23 +75,168 @@
       "name": "Разбор ответа",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [660, 0]
+      "position": [
+        660,
+        0
+      ]
     },
     {
-      "parameters": { "respondWith": "json", "responseBody": "={{ JSON.stringify($json) }}", "options": {} },
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
       "id": "resp-1",
       "name": "Ответ",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [880, 0]
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Лид-захват: каждая классифицированная заявка попадает в очередь менеджера\nconst staticData = $getWorkflowStaticData('global');\nstaticData.leads = staticData.leads || [];\nconst src = $('Валидация').first().json;\nstaticData.leads.push({\n  user: src.user, text: String(src.text || '').slice(0, 200),\n  category: $json.category, priority: $json.priority, summary: $json.summary,\n  ts: new Date().toISOString(),\n});\nif (staticData.leads.length > 200) { staticData.leads.splice(0, staticData.leads.length - 200); }\nreturn [{ json: $json }];"
+      },
+      "id": "code-lead",
+      "name": "Лид-захват",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "demo/leads",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-leads",
+      "name": "Webhook leads",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        220
+      ],
+      "webhookId": "demo-leads"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Очередь заявок для менеджера: последние 20, свежие сверху\nconst staticData = $getWorkflowStaticData('global');\nstaticData.leads = staticData.leads || [];\nreturn [{ json: { ok: true, leads: staticData.leads.slice(-20).reverse() } }];"
+      },
+      "id": "code-leads",
+      "name": "Лиды",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "resp-leads",
+      "name": "Ответ leads",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        220
+      ]
     }
   ],
   "connections": {
-    "Webhook": { "main": [[{ "node": "Валидация", "type": "main", "index": 0 }]] },
-    "Валидация": { "main": [[{ "node": "LLM", "type": "main", "index": 0 }]] },
-    "LLM": { "main": [[{ "node": "Разбор ответа", "type": "main", "index": 0 }]] },
-    "Разбор ответа": { "main": [[{ "node": "Ответ", "type": "main", "index": 0 }]] }
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Валидация",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Валидация": {
+      "main": [
+        [
+          {
+            "node": "LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM": {
+      "main": [
+        [
+          {
+            "node": "Разбор ответа",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Разбор ответа": {
+      "main": [
+        [
+          {
+            "node": "Лид-захват",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Лид-захват": {
+      "main": [
+        [
+          {
+            "node": "Ответ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook leads": {
+      "main": [
+        [
+          {
+            "node": "Лиды",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Лиды": {
+      "main": [
+        [
+          {
+            "node": "Ответ leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" },
-  "meta": { "instanceId": "live-stand-ct100" }
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "live-stand-ct100"
+  }
 }
